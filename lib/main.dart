@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() => runApp(const TemujanjiApp());
 
@@ -40,19 +42,39 @@ class _TempahPageState extends State<TempahPage> {
     if (d != null) setState(() => _tarikh = d);
   }
 
-  void _hantar() {
+  Future<void> _hantar() async {
     if (_nama.text.isEmpty || _telefon.text.isEmpty || _tarikh == null || _masa == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sila lengkapkan semua maklumat')),
       );
       return;
     }
+    final nama = _nama.text;
+    final masa = _masa;
     final t = '${_tarikh!.day}/${_tarikh!.month}/${_tarikh!.year}';
+
+    final prefs = await SharedPreferences.getInstance();
+    final senarai = prefs.getStringList('temujanji') ?? [];
+    senarai.add(jsonEncode({
+      'nama': nama,
+      'telefon': _telefon.text,
+      'tarikh': _tarikh!.toIso8601String(),
+      'masa': masa,
+    }));
+    await prefs.setStringList('temujanji', senarai);
+
+    if (!mounted) return;
+    _nama.clear();
+    _telefon.clear();
+    setState(() {
+      _tarikh = null;
+      _masa = null;
+    });
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Temujanji Disimpan'),
-        content: Text('${_nama.text}\n$t, $_masa'),
+        content: Text('$nama\n$t, $masa\n\nJumlah tersimpan: ${senarai.length}'),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
       ),
     );
