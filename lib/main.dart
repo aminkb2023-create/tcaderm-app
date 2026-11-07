@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() => runApp(const TemujanjiApp());
 
+String formatTarikh(DateTime d) => '${d.day}/${d.month}/${d.year}';
+
 class TemujanjiApp extends StatelessWidget {
   const TemujanjiApp({super.key});
 
@@ -51,7 +53,7 @@ class _TempahPageState extends State<TempahPage> {
     }
     final nama = _nama.text;
     final masa = _masa;
-    final t = '${_tarikh!.day}/${_tarikh!.month}/${_tarikh!.year}';
+    final t = formatTarikh(_tarikh!);
 
     final prefs = await SharedPreferences.getInstance();
     final senarai = prefs.getStringList('temujanji') ?? [];
@@ -83,7 +85,19 @@ class _TempahPageState extends State<TempahPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Tempah Temujanji')),
+      appBar: AppBar(
+        title: const Text('Tempah Temujanji'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.list_alt),
+            tooltip: 'Senarai temujanji',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SenaraiPage()),
+            ),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -94,7 +108,7 @@ class _TempahPageState extends State<TempahPage> {
           OutlinedButton.icon(
             onPressed: _pilihTarikh,
             icon: const Icon(Icons.calendar_today),
-            label: Text(_tarikh == null ? 'Pilih tarikh' : '${_tarikh!.day}/${_tarikh!.month}/${_tarikh!.year}'),
+            label: Text(_tarikh == null ? 'Pilih tarikh' : formatTarikh(_tarikh!)),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
@@ -110,3 +124,45 @@ class _TempahPageState extends State<TempahPage> {
     );
   }
 }
+
+class SenaraiPage extends StatefulWidget {
+  const SenaraiPage({super.key});
+
+  @override
+  State<SenaraiPage> createState() => _SenaraiPageState();
+}
+
+class _SenaraiPageState extends State<SenaraiPage> {
+  List<Map<String, dynamic>> _items = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _muat();
+  }
+
+  Future<void> _muat() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList('temujanji') ?? [];
+    final items = raw.map((r) {
+      final m = jsonDecode(r) as Map<String, dynamic>;
+      m['raw'] = r;
+      return m;
+    }).toList();
+    items.sort((a, b) {
+      final c = (a['tarikh'] as String).compareTo(b['tarikh'] as String);
+      return c != 0 ? c : (a['masa'] as String).compareTo(b['masa'] as String);
+    });
+    if (!mounted) return;
+    setState(() {
+      _items = items;
+      _loading = false;
+    });
+  }
+
+  Future<void> _padam(Map<String, dynamic> item) async {
+    final sah = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const
