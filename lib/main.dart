@@ -1,11 +1,10 @@
-import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() => runApp(const TemujanjiApp());
 
-String formatTarikh(DateTime d) => '${d.day}/${d.month}/${d.year}';
 String formatTarikh(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
 const namaHari = ['', 'Isnin', 'Selasa', 'Rabu', 'Khamis', 'Jumaat', 'Sabtu', 'Ahad'];
@@ -15,6 +14,13 @@ const jadualKlinik = {
   'Klinik Hansen': [2],
   'Klinik Psoriasis': [4],
 };
+
+// CONTOH SAHAJA: IC rekaan untuk ujian
+const pendaftaranContoh = {
+  '900101015555': 'Klinik Hansen',
+  '950202025555': 'Klinik Psoriasis',
+};
+
 class TemujanjiApp extends StatelessWidget {
   const TemujanjiApp({super.key});
 
@@ -36,8 +42,13 @@ class TempahPage extends StatefulWidget {
 }
 
 class _TempahPageState extends State<TempahPage> {
+  final _ic = TextEditingController();
   final _nama = TextEditingController();
-   final _ic = TextEditingController();
+  final _telefon = TextEditingController();
+  String? _klinik;
+  DateTime? _tarikh;
+  String? _masa;
+  final _slot = ['09:00', '10:00', '11:00', '14:00', '15:00', '16:00'];
 
   void _semakIc(String v) {
     final k = v.length == 12 ? pendaftaranContoh[v] : null;
@@ -51,25 +62,33 @@ class _TempahPageState extends State<TempahPage> {
       );
     }
   }
-  final _telefon = TextEditingController();
-  DateTime? _tarikh;
-  String? _masa;
-  final _slot = ['09:00', '10:00', '11:00', '14:00', '15:00', '16:00'];
 
   Future<void> _pilihTarikh() async {
+    if (_klinik == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Masukkan No. IC dahulu')),
+      );
+      return;
+    }
+    final hari = jadualKlinik[_klinik]!;
     final now = DateTime.now();
+    final hariIni = DateTime(now.year, now.month, now.day);
+    var mula = hariIni;
+    while (!hari.contains(mula.weekday)) {
+      mula = mula.add(const Duration(days: 1));
+    }
     final d = await showDatePicker(
       context: context,
-      initialDate: now,
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 90)),
+      initialDate: mula,
+      firstDate: hariIni,
+      lastDate: hariIni.add(const Duration(days: 90)),
+      selectableDayPredicate: (day) => hari.contains(day.weekday),
     );
     if (d != null) setState(() => _tarikh = d);
   }
 
-    Future<void> _hantar() async {
+  Future<void> _hantar() async {
     if (_klinik == null ||
-        _ic.text.length != 12 ||
         _nama.text.isEmpty ||
         _telefon.text.isEmpty ||
         _tarikh == null ||
@@ -84,33 +103,6 @@ class _TempahPageState extends State<TempahPage> {
     final masa = _masa;
     final t = formatTarikh(_tarikh!);
 
-    try {
-      final res = await http.post(
-        Uri.parse('$serverUrl/temujanji'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'ic': _ic.text,
-          'nama': nama,
-          'telefon': _telefon.text,
-          'tarikh': _tarikh!.toIso8601String(),
-          'masa': masa,
-        }),
-      );
-      if (res.statusCode != 200) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res.statusCode == 409 ? 'Slot sudah diambil, pilih masa lain' : 'Gagal menyimpan')),
-        );
-        return;
-      }
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tak dapat sambung ke pelayan')),
-      );
-      return;
-    }
-
     final prefs = await SharedPreferences.getInstance();
     final senarai = prefs.getStringList('temujanji') ?? [];
     senarai.add(jsonEncode({
@@ -124,9 +116,9 @@ class _TempahPageState extends State<TempahPage> {
     await prefs.setStringList('temujanji', senarai);
 
     if (!mounted) return;
+    _ic.clear();
     _nama.clear();
     _telefon.clear();
-    _ic.clear();
     setState(() {
       _klinik = null;
       _tarikh = null;
@@ -137,7 +129,9 @@ class _TempahPageState extends State<TempahPage> {
       builder: (_) => AlertDialog(
         title: const Text('Temujanji Disimpan'),
         content: Text('$klinik\n$nama\n$t, $masa\n\nJumlah tersimpan: ${senarai.length}'),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+        ],
       ),
     );
   }
@@ -161,7 +155,7 @@ class _TempahPageState extends State<TempahPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-                    TextField(
+          TextField(
             controller: _ic,
             keyboardType: TextInputType.number,
             maxLength: 12,
@@ -177,13 +171,23 @@ class _TempahPageState extends State<TempahPage> {
               child: ListTile(
                 leading: const Icon(Icons.local_hospital),
                 title: Text(_klinik!),
-                subtitle: Text('Hari klinik: ${jadualKlinik[_klinik]!.map((h) => namaHari[h]).join(', ')}'),
+                subtitle: Text(
+                    'Hari klinik: ${jadualKlinik[_klinik]!.map((h) => namaHari[h]).join(', ')}'),
               ),
             ),
           const SizedBox(height: 12),
-          TextField(controller: _nama, decoration: const InputDecoration(labelText: 'Nama pesakit', border: OutlineInputBorder())),
+          TextField(
+            controller: _nama,
+            decoration: const InputDecoration(
+                labelText: 'Nama pesakit', border: OutlineInputBorder()),
+          ),
           const SizedBox(height: 12),
-          TextField(controller: _telefon, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'No. telefon', border: OutlineInputBorder())),
+          TextField(
+            controller: _telefon,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+                labelText: 'No. telefon', border: OutlineInputBorder()),
+          ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: _pilihTarikh,
@@ -192,9 +196,12 @@ class _TempahPageState extends State<TempahPage> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            initialValue: _masa,
-            decoration: const InputDecoration(labelText: 'Masa', border: OutlineInputBorder()),
-            items: _slot.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+            value: _masa,
+            decoration: const InputDecoration(
+                labelText: 'Masa', border: OutlineInputBorder()),
+            items: _slot
+                .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                .toList(),
             onChanged: (v) => setState(() => _masa = v),
           ),
           const SizedBox(height: 20),
@@ -246,10 +253,15 @@ class _SenaraiPageState extends State<SenaraiPage> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Padam temujanji?'),
-        content: Text('${item['nama']}\n${formatTarikh(DateTime.parse(item['tarikh']))}, ${item['masa']}'),
+        content: Text(
+            '${item['nama']}\n${formatTarikh(DateTime.parse(item['tarikh']))}, ${item['masa']}'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Padam')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Batal')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Padam')),
         ],
       ),
     );
@@ -271,14 +283,15 @@ class _SenaraiPageState extends State<SenaraiPage> {
               ? const Center(child: Text('Tiada temujanji lagi'))
               : ListView.separated(
                   itemCount: _items.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (_, i) {
                     final it = _items[i];
                     final t = formatTarikh(DateTime.parse(it['tarikh']));
                     return ListTile(
                       leading: CircleAvatar(child: Text('${i + 1}')),
                       title: Text(it['nama']),
-                      subtitle: Text('$t, ${it['masa']}\n${it['telefon']}'),
+                      subtitle: Text(
+                          '${it['klinik'] ?? '-'}\n$t, ${it['masa']}\n${it['telefon']}'),
                       isThreeLine: true,
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline),
