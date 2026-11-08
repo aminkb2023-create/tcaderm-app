@@ -88,3 +88,5 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+http: ^1.2.0
+flutter_secure_storage: ^9.2.2
