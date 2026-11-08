@@ -165,4 +165,48 @@ class _SenaraiPageState extends State<SenaraiPage> {
     final sah = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-           title: const Text('Padam temujanji?'),
+        title: const Text('Padam temujanji?'),
+        content: Text('${item['nama']}\n${formatTarikh(DateTime.parse(item['tarikh']))}, ${item['masa']}'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Padam')),
+        ],
+      ),
+    );
+    if (sah != true) return;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList('temujanji') ?? [];
+    raw.remove(item['raw']);
+    await prefs.setStringList('temujanji', raw);
+    await _muat();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Senarai Temujanji (${_items.length})')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _items.isEmpty
+              ? const Center(child: Text('Tiada temujanji lagi'))
+              : ListView.separated(
+                  itemCount: _items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final it = _items[i];
+                    final t = formatTarikh(DateTime.parse(it['tarikh']));
+                    return ListTile(
+                      leading: CircleAvatar(child: Text('${i + 1}')),
+                      title: Text(it['nama']),
+                      subtitle: Text('$t, ${it['masa']}\n${it['telefon']}'),
+                      isThreeLine: true,
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => _padam(it),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
